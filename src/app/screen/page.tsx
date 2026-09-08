@@ -291,7 +291,7 @@ export default function ScreenPage() {
               </span>
             </h1>
             <p className="text-xs text-slate-400 font-mono">
-              실시간 30인 초고속 클릭 배틀 (프로젝터 전용 화면)
+              실시간 40인 초고속 클릭 배틀 (프로젝터 전용 화면)
             </p>
           </div>
         </div>
@@ -356,7 +356,7 @@ export default function ScreenPage() {
                   <div className="flex items-center gap-2">
                     <h2 className="text-lg font-bold font-mono text-slate-200">대기실 참가자</h2>
                     <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-mono font-bold">
-                      {activePlayers.length} / 30명
+                      {activePlayers.length} / 40명
                     </span>
                   </div>
                   <span className="text-xs text-slate-500 font-mono animate-pulse">실시간 접속 감지 중...</span>
@@ -456,7 +456,7 @@ export default function ScreenPage() {
 
             <div className="mt-4">
               <h3 className="text-sm font-mono text-slate-400 uppercase tracking-wider mb-3 px-1">
-                전체 참가자 최종 순위표 (TOP 30)
+                전체 참가자 최종 순위표 (TOP 40)
               </h3>
               <RankingColumns participants={participants} isGameOver={true} />
             </div>

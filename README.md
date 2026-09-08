@@ -1,9 +1,9 @@
 # ⚡ 실시간 20초 클릭 배틀 (Click Battle)
 
-> 고등학생 30명을 대상으로 한 아케이드 감성의 실시간 20초 초고속 클릭 배틀 웹 애플리케이션입니다.  
+> 고등학생 40명을 대상으로 한 아케이드 감성의 실시간 20초 초고속 클릭 배틀 웹 애플리케이션입니다.  
 > Next.js (App Router), Tailwind CSS, Supabase Realtime(Broadcast)으로 구축되었으며 Vercel에 원클릭 배포할 수 있습니다.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChanhuiSeok%2Fclickable&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChanhuiSeok%2Fclickable&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
 
 ---
 
@@ -23,11 +23,11 @@
 ### 2. 📺 프로젝터 뷰 (발표자용) - `/screen`
 - **대형 스크린 / 전자칠판 최적화**: 네온 글로우와 사이버펑크 아케이드 다크모드 UI
 - **접속용 QR 코드 및 주소 복사**: 학생들이 스마트폰 카메라로 즉시 접속할 수 있는 대형 QR코드
-- **참가자 실시간 감지**: 접속한 학생들의 닉네임 뱃지가 실시간으로 대기실에 등록
+- **참가자 실시간 감지**: 접속한 학생들의 닉네임 뱃지가 실시간으로 대기실에 등록 (최대 40명 수용)
 - **[게임 시작] 버튼 & 스페이스바(SPACE) 단축키**: 3초 카운트다운 후 20초 게임 일괄 시작 브로드캐스트 발송
-- **실시간 1~30등 2단 컬럼 순위표**:
-  - **좌측 컬럼**: 1등 ~ 15등 (Champion Bracket)
-  - **우측 컬럼**: 16등 ~ 30등 (Challenger Bracket)
+- **실시간 1~40등 2단 컬럼 순위표**:
+  - **좌측 컬럼**: 1등 ~ 20등 (Champion Bracket)
+  - **우측 컬럼**: 21등 ~ 40등 (Challenger Bracket)
   - 1, 2, 3위 황금/은/동 뱃지 및 점수 비율 게이지, 실시간 CPS 표시
 - **종료 시상식 및 폭죽**:
   - 20초 종료 휘슬과 함께 1, 2, 3위 입체 포디엄(시상대) 연출

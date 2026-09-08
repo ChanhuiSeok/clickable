@@ -248,7 +248,7 @@ export default function StudentPage() {
               {isJoined ? nickname : '20초 클릭 배틀'}
             </div>
             <div className="text-[10px] font-mono text-slate-500">
-              {isJoined ? '온라인 참가 중' : '고등학생 30인 배틀'}
+              {isJoined ? '온라인 참가 중' : '고등학생 40인 배틀'}
             </div>
           </div>
         </div>
@@ -518,7 +518,7 @@ export default function StudentPage() {
             </div>
 
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs font-mono text-slate-400">
-              📺 프로젝터 화면에서 1~30등 최종 순위와 시상식을 확인하세요!
+              📺 프로젝터 화면에서 1~40등 최종 순위와 시상식을 확인하세요!
             </div>
           </div>
         </div>
