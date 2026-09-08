@@ -171,16 +171,20 @@ export default function ScreenPage() {
 
   const handleEndGame = useCallback(() => {
     if (gameTimerRef.current) clearInterval(gameTimerRef.current);
-    setGameState('ended');
-    setRemainingTime(0);
 
-    sound.playFinish();
-
-    // Broadcast end event to all students
+    // 1. 모든 학생에게 즉시 종료 신호 전송 -> 학생 클라이언트에서 마지막 잔여 클릭 즉시 Flush
     const endPayload: GameControlPayload = {
       action: 'end',
     };
     realtime.sendGameControl(endPayload);
+
+    sound.playFinish();
+
+    // 2. 학생들의 막판 버저비터(마지막 0.2초) 패킷이 완전히 수신 집계되도록 350ms 대기 후 최종 시상식 전환
+    setTimeout(() => {
+      setGameState('ended');
+      setRemainingTime(0);
+    }, 350);
   }, []);
 
   const handleStartGame = useCallback(() => {

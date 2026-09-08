@@ -114,6 +114,43 @@ export default function StudentPage() {
     }, BATCH_INTERVAL_MS);
   }, [userId, nickname, avatar]);
 
+  // Final Buzzer-Beater Flush: 마지막 0.2초 잔여 클릭 즉시 1회 강제 전송
+  const flushPendingClicks = useCallback(() => {
+    if (batchIntervalRef.current) {
+      clearInterval(batchIntervalRef.current);
+      batchIntervalRef.current = null;
+    }
+
+    const added = pendingClicksRef.current;
+    pendingClicksRef.current = 0;
+
+    if (added <= 0) return;
+
+    const now = Date.now();
+    const elapsedSec = Math.max((now - lastBatchTimeRef.current) / 1000, 0.05);
+    const instantCps = Math.round(added / (elapsedSec || 0.2));
+
+    if (instantCps > MAX_ALLOWED_CPS) {
+      return;
+    }
+
+    totalVerifiedClicksRef.current += added;
+    const total = totalVerifiedClicksRef.current;
+    setLocalClicks(total);
+
+    // 즉시 버저비터 배치 전송
+    const batchPayload: ScoreBatchPayload = {
+      id: userId,
+      nickname: nickname.trim() || '익명',
+      avatar,
+      addedClicks: added,
+      totalScore: total,
+      cps: instantCps,
+      timestamp: now,
+    };
+    realtime.sendScoreBatch(batchPayload);
+  }, [userId, nickname, avatar]);
+
   // Connect to Realtime channel whenever joined (including after refresh)
   useEffect(() => {
     if (!isJoined || !userId) return;
@@ -168,11 +205,13 @@ export default function StudentPage() {
           setRemainingTime(rem);
           if (rem <= 0) {
             clearInterval(clientTimerRef.current!);
+            flushPendingClicks();
           }
         }, 1000);
       } else if (payload.action === 'end') {
+        // 즉시 마지막 버저비터 잔여 클릭 Flush 후 종료
+        flushPendingClicks();
         setGameState('ended');
-        if (batchIntervalRef.current) clearInterval(batchIntervalRef.current);
         if (clientTimerRef.current) clearInterval(clientTimerRef.current);
         sound.playFinish();
       } else if (payload.action === 'reset') {
@@ -191,7 +230,7 @@ export default function StudentPage() {
       if (clientTimerRef.current) clearInterval(clientTimerRef.current);
       realtime.disconnect();
     };
-  }, [isJoined, userId, nickname, avatar, startBatchingLoop]);
+  }, [isJoined, userId, nickname, avatar, startBatchingLoop, flushPendingClicks]);
 
   const handleRandomNickname = () => {
     const adjectives = ['불꽃', '번개', '광속', '질주', '강철', '황금', '초고속', '전설의', '승리의', '폭풍'];
