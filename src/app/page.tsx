@@ -34,19 +34,19 @@ export default function StudentPage() {
   const batchIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const clientTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize or restore saved nickname & clientId
+  // Initialize or restore saved nickname & clientId per tab session
   useEffect(() => {
-    let savedId = localStorage.getItem('click_battle_uid');
+    let savedId = sessionStorage.getItem('click_battle_uid');
     if (!savedId) {
-      savedId = `user_${Math.random().toString(36).substring(2, 9)}`;
-      localStorage.setItem('click_battle_uid', savedId);
+      savedId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      sessionStorage.setItem('click_battle_uid', savedId);
     }
     userIdRef.current = savedId;
 
-    const savedNick = localStorage.getItem('click_battle_nick');
+    const savedNick = sessionStorage.getItem('click_battle_nick') || localStorage.getItem('click_battle_nick');
     if (savedNick) setNickname(savedNick);
 
-    const savedAvatar = localStorage.getItem('click_battle_avatar');
+    const savedAvatar = sessionStorage.getItem('click_battle_avatar') || localStorage.getItem('click_battle_avatar');
     if (savedAvatar) setAvatar(savedAvatar);
   }, []);
 
@@ -112,8 +112,8 @@ export default function StudentPage() {
     if (e) e.preventDefault();
     if (!nickname.trim()) return;
 
-    localStorage.setItem('click_battle_nick', nickname.trim());
-    localStorage.setItem('click_battle_avatar', avatar);
+    sessionStorage.setItem('click_battle_nick', nickname.trim());
+    sessionStorage.setItem('click_battle_avatar', avatar);
 
     setIsJoined(true);
 

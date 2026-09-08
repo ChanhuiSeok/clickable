@@ -1,10 +1,11 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
-import { GameControlPayload, ScoreBatchPayload, Participant } from '@/types/game';
+import { GameControlPayload, ScoreBatchPayload, Participant, PlayerJoinPayload } from '@/types/game';
 
 type GameControlCallback = (payload: GameControlPayload) => void;
 type ScoreBatchCallback = (payload: ScoreBatchPayload) => void;
 type PresenceCallback = (participants: Participant[]) => void;
+type PlayerJoinCallback = (payload: PlayerJoinPayload) => void;
 
 const ROOM_NAME = 'click_battle_lobby';
 const LOCAL_CHANNEL_NAME = 'click_battle_local_channel';
@@ -15,8 +16,9 @@ class BattleRealtimeClient {
   private gameControlListeners: Set<GameControlCallback> = new Set();
   private scoreBatchListeners: Set<ScoreBatchCallback> = new Set();
   private presenceListeners: Set<PresenceCallback> = new Set();
+  private playerJoinListeners: Set<PlayerJoinCallback> = new Set();
   private currentPresence: Map<string, Participant> = new Map();
-  private isConnected: boolean = false;
+  public isConnected: boolean = false;
   private role: 'screen' | 'student' = 'student';
   private currentUser: Participant | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -31,8 +33,11 @@ class BattleRealtimeClient {
         score: user.score || 0,
         lastCps: 0,
         maxCps: 0,
+        role: 'student',
         lastActive: Date.now(),
       };
+      // Register self in current presence
+      this.currentPresence.set(user.id, this.currentUser);
     }
 
     const supabase = getSupabaseClient();
@@ -44,6 +49,32 @@ class BattleRealtimeClient {
     }
 
     this.startHeartbeat();
+
+    // If student just joined, broadcast join event
+    if (role === 'student' && this.currentUser) {
+      this.sendPlayerJoin({
+        id: this.currentUser.id,
+        nickname: this.currentUser.nickname,
+        avatar: this.currentUser.avatar,
+      });
+    }
+  }
+
+  private handleIncomingPlayer(p: Partial<Participant>) {
+    if (!p || !p.id) return;
+    const existing = this.currentPresence.get(p.id);
+    const updated: Participant = {
+      id: p.id,
+      nickname: p.nickname || existing?.nickname || '익명',
+      avatar: p.avatar || existing?.avatar || '⚡',
+      score: p.score ?? existing?.score ?? 0,
+      lastCps: p.lastCps ?? existing?.lastCps ?? 0,
+      maxCps: p.maxCps ?? existing?.maxCps ?? 0,
+      role: 'student',
+      lastActive: Date.now(),
+    };
+    this.currentPresence.set(p.id, updated);
+    this.notifyPresence();
   }
 
   private setupSupabaseChannel(supabase: ReturnType<typeof getSupabaseClient>) {
@@ -61,27 +92,44 @@ class BattleRealtimeClient {
         this.gameControlListeners.forEach((fn) => fn(payload as GameControlPayload));
       })
       .on('broadcast', { event: 'score_batch' }, ({ payload }) => {
-        this.scoreBatchListeners.forEach((fn) => fn(payload as ScoreBatchPayload));
+        const batch = payload as ScoreBatchPayload;
+        if (batch && batch.id) {
+          this.handleIncomingPlayer({
+            id: batch.id,
+            nickname: batch.nickname,
+            avatar: batch.avatar,
+            score: batch.totalScore,
+            lastCps: batch.cps,
+          });
+        }
+        this.scoreBatchListeners.forEach((fn) => fn(batch));
+      })
+      .on('broadcast', { event: 'player_join' }, ({ payload }) => {
+        const joinData = payload as PlayerJoinPayload;
+        this.handleIncomingPlayer(joinData);
+        this.playerJoinListeners.forEach((fn) => fn(joinData));
       })
       .on('broadcast', { event: 'player_heartbeat' }, ({ payload }) => {
-        const p = payload as Participant;
-        if (p && p.id) {
-          this.currentPresence.set(p.id, { ...p, lastActive: Date.now() });
-          this.notifyPresence();
+        this.handleIncomingPlayer(payload as Participant);
+      })
+      .on('broadcast', { event: 'presence_request' }, () => {
+        if (this.currentUser && this.role === 'student') {
+          this.sendPlayerJoin({
+            id: this.currentUser.id,
+            nickname: this.currentUser.nickname,
+            avatar: this.currentUser.avatar,
+          });
         }
       })
       .on('presence', { event: 'sync' }, () => {
         const state = this.channel?.presenceState() || {};
-        const participants: Participant[] = [];
         Object.values(state).forEach((presences) => {
           (presences as unknown as Participant[]).forEach((p) => {
             if (p && p.id && p.role === 'student') {
-              participants.push(p);
-              this.currentPresence.set(p.id, p);
+              this.handleIncomingPlayer(p);
             }
           });
         });
-        this.notifyPresence();
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -90,6 +138,13 @@ class BattleRealtimeClient {
             this.channel?.track({
               ...this.currentUser,
               role: 'student',
+            });
+          }
+          if (this.role === 'screen') {
+            this.channel?.send({
+              type: 'broadcast',
+              event: 'presence_request',
+              payload: {},
             });
           }
         }
@@ -103,20 +158,35 @@ class BattleRealtimeClient {
       this.localBroadcastChannel = new BroadcastChannel(LOCAL_CHANNEL_NAME);
       this.localBroadcastChannel.onmessage = (event) => {
         const { type, payload } = event.data || {};
+
         if (type === 'game_control') {
           this.gameControlListeners.forEach((fn) => fn(payload));
         } else if (type === 'score_batch') {
-          this.scoreBatchListeners.forEach((fn) => fn(payload));
-        } else if (type === 'player_heartbeat') {
-          const p = payload as Participant;
-          if (p && p.id) {
-            this.currentPresence.set(p.id, { ...p, lastActive: Date.now() });
-            this.notifyPresence();
+          const batch = payload as ScoreBatchPayload;
+          if (batch && batch.id) {
+            this.handleIncomingPlayer({
+              id: batch.id,
+              nickname: batch.nickname,
+              avatar: batch.avatar,
+              score: batch.totalScore,
+              lastCps: batch.cps,
+            });
           }
+          this.scoreBatchListeners.forEach((fn) => fn(batch));
+        } else if (type === 'player_join') {
+          const joinData = payload as PlayerJoinPayload;
+          this.handleIncomingPlayer(joinData);
+          this.playerJoinListeners.forEach((fn) => fn(joinData));
+        } else if (type === 'player_heartbeat') {
+          this.handleIncomingPlayer(payload as Participant);
         } else if (type === 'presence_request') {
-          // If a screen requests presence, send current user
-          if (this.currentUser) {
-            this.sendLocal('player_heartbeat', this.currentUser);
+          // A screen requested presence, send my profile if I am a student
+          if (this.currentUser && this.role === 'student') {
+            this.sendLocal('player_join', {
+              id: this.currentUser.id,
+              nickname: this.currentUser.nickname,
+              avatar: this.currentUser.avatar,
+            });
           }
         }
       };
@@ -126,8 +196,6 @@ class BattleRealtimeClient {
       // Ask others for presence
       if (this.role === 'screen') {
         this.sendLocal('presence_request', {});
-      } else if (this.currentUser) {
-        this.sendLocal('player_heartbeat', this.currentUser);
       }
     } catch (e) {
       console.warn('BroadcastChannel not supported in this environment', e);
@@ -156,11 +224,11 @@ class BattleRealtimeClient {
         }
       }
 
-      // Cleanup inactive players after 12 seconds
+      // Cleanup inactive players after 20 seconds
       const now = Date.now();
       let changed = false;
       this.currentPresence.forEach((p, id) => {
-        if (now - (p.lastActive || 0) > 12000) {
+        if (now - (p.lastActive || 0) > 20000) {
           this.currentPresence.delete(id);
           changed = true;
         }
@@ -182,7 +250,6 @@ class BattleRealtimeClient {
   }
 
   sendGameControl(payload: GameControlPayload) {
-    // Notify locally as well
     this.gameControlListeners.forEach((fn) => fn(payload));
 
     if (this.channel && isSupabaseConfigured) {
@@ -205,6 +272,7 @@ class BattleRealtimeClient {
     if (this.currentUser) {
       this.currentUser.score = payload.totalScore;
       this.currentUser.lastCps = payload.cps;
+      this.currentUser.lastActive = Date.now();
     }
 
     if (this.channel && isSupabaseConfigured) {
@@ -218,20 +286,27 @@ class BattleRealtimeClient {
     }
   }
 
+  sendPlayerJoin(payload: PlayerJoinPayload) {
+    if (this.channel && isSupabaseConfigured) {
+      this.channel.send({
+        type: 'broadcast',
+        event: 'player_join',
+        payload,
+      });
+    } else {
+      this.sendLocal('player_join', payload);
+    }
+  }
+
+  onPlayerJoin(callback: PlayerJoinCallback) {
+    this.playerJoinListeners.add(callback);
+    return () => this.playerJoinListeners.delete(callback);
+  }
+
   onPresence(callback: PresenceCallback) {
     this.presenceListeners.add(callback);
     callback(Array.from(this.currentPresence.values()));
     return () => this.presenceListeners.delete(callback);
-  }
-
-  updateCurrentUser(user: Partial<Participant>) {
-    if (!this.currentUser) return;
-    this.currentUser = { ...this.currentUser, ...user };
-    if (this.channel && isSupabaseConfigured) {
-      this.channel.track({ ...this.currentUser, role: 'student' });
-    } else {
-      this.sendLocal('player_heartbeat', this.currentUser);
-    }
   }
 
   disconnect() {
@@ -247,6 +322,7 @@ class BattleRealtimeClient {
     this.gameControlListeners.clear();
     this.scoreBatchListeners.clear();
     this.presenceListeners.clear();
+    this.playerJoinListeners.clear();
     this.currentPresence.clear();
   }
 }

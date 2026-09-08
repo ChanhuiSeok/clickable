@@ -39,22 +39,52 @@ export default function ScreenPage() {
   useEffect(() => {
     realtime.init('screen');
 
-    // Subscribe to presence
+    // Subscribe to presence list updates
     const unsubPresence = realtime.onPresence((userList) => {
       setParticipants((prev) => {
-        const map = new Map(prev.map((p) => [p.id, p]));
-        userList.forEach((u) => {
-          if (!map.has(u.id)) {
-            map.set(u.id, u);
-          } else {
-            const existing = map.get(u.id)!;
-            map.set(u.id, {
-              ...existing,
+        const existingMap = new Map(prev.map((p) => [p.id, p]));
+        return userList
+          .filter((u) => u.role !== 'screen')
+          .map((u) => {
+            const existing = existingMap.get(u.id);
+            return {
+              id: u.id,
               nickname: u.nickname,
               avatar: u.avatar,
-            });
-          }
-        });
+              score: existing?.score ?? u.score ?? 0,
+              lastCps: existing?.lastCps ?? u.lastCps ?? 0,
+              maxCps: existing?.maxCps ?? u.maxCps ?? 0,
+              role: 'student',
+              lastActive: u.lastActive || Date.now(),
+            };
+          });
+      });
+    });
+
+    // Subscribe to immediate player join broadcasts
+    const unsubJoin = realtime.onPlayerJoin((player) => {
+      setParticipants((prev) => {
+        const map = new Map(prev.map((p) => [p.id, p]));
+        if (!map.has(player.id)) {
+          map.set(player.id, {
+            id: player.id,
+            nickname: player.nickname,
+            avatar: player.avatar,
+            score: 0,
+            lastCps: 0,
+            maxCps: 0,
+            role: 'student',
+            lastActive: Date.now(),
+          });
+        } else {
+          const existing = map.get(player.id)!;
+          map.set(player.id, {
+            ...existing,
+            nickname: player.nickname,
+            avatar: player.avatar,
+            lastActive: Date.now(),
+          });
+        }
         return Array.from(map.values());
       });
     });
@@ -83,6 +113,7 @@ export default function ScreenPage() {
             score: batch.totalScore,
             lastCps: batch.cps,
             maxCps: batch.cps,
+            role: 'student',
             lastActive: Date.now(),
           });
         }
@@ -93,6 +124,7 @@ export default function ScreenPage() {
     // Cleanup
     return () => {
       unsubPresence();
+      unsubJoin();
       unsubScore();
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);
