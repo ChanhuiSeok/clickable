@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone } from 'lucide-react';
+import { Zap, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone, Dices } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
+import { checkProfanity } from '@/lib/badwords';
 
 const AVATARS = ['⚡', '🔥', '🚀', '🐱', '👾', '👑', '🥊', '🎯', '🦁', '🦊', '⭐', '💣'];
 const BATCH_INTERVAL_MS = 200;
@@ -23,6 +24,7 @@ export default function StudentPage() {
     }
     return '⚡';
   });
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
   const [isJoined, setIsJoined] = useState<boolean>(false);
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [countdown, setCountdown] = useState<number>(3);
@@ -110,12 +112,29 @@ export default function StudentPage() {
     }, BATCH_INTERVAL_MS);
   }, [nickname, avatar]);
 
+  const handleRandomNickname = () => {
+    const adjectives = ['불꽃', '번개', '광속', '질주', '강철', '황금', '초고속', '전설의', '승리의', '폭풍'];
+    const nouns = ['치타', '호랑이', '클리커', '파이터', '타이퍼', '펀처', '장인', '지존', '손가락', '질주마'];
+    const randomNick = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}`;
+    setNickname(randomNick);
+    setNicknameError(null);
+  };
+
   // Handle joining the room
   const handleJoin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!nickname.trim()) return;
+    const trimmed = nickname.trim();
+    if (!trimmed) return;
 
-    sessionStorage.setItem('click_battle_nick', nickname.trim());
+    // Badwords / Profanity filter
+    const profanity = checkProfanity(trimmed);
+    if (!profanity.isClean) {
+      setNicknameError('비속어나 부적절한 단어가 포함된 닉네임은 사용할 수 없습니다.');
+      return;
+    }
+
+    setNicknameError(null);
+    sessionStorage.setItem('click_battle_nick', trimmed);
     sessionStorage.setItem('click_battle_avatar', avatar);
 
     setIsJoined(true);
@@ -314,18 +333,41 @@ export default function StudentPage() {
 
               {/* Nickname Input */}
               <div>
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">
-                  닉네임 (2~10자)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-mono text-slate-400">
+                    닉네임 (2~10자)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRandomNickname}
+                    className="inline-flex items-center gap-1 text-[11px] font-mono text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer"
+                  >
+                    <Dices size={13} />
+                    <span>랜덤 생성</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   maxLength={10}
                   value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
+                  onChange={(e) => {
+                    setNickname(e.target.value);
+                    if (nicknameError) setNicknameError(null);
+                  }}
                   placeholder="예: 클릭의신, 번개손"
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-bold transition-all text-base"
+                  className={`w-full px-4 py-3 rounded-xl bg-slate-950 border text-white placeholder-slate-600 focus:outline-none font-bold transition-all text-base ${
+                    nicknameError
+                      ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                      : 'border-slate-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
+                  }`}
                 />
+                {nicknameError && (
+                  <p className="mt-1.5 text-xs text-rose-400 font-mono flex items-center gap-1 animate-pulse">
+                    <span>⚠️</span>
+                    <span>{nicknameError}</span>
+                  </p>
+                )}
               </div>
 
               {/* Submit Button */}
