@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Play, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check, Lock, KeyRound, ShieldAlert, LogIn } from 'lucide-react';
+import { Play, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check, Lock, KeyRound, ShieldAlert, LogIn, Square } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -278,17 +278,28 @@ export default function ScreenPage() {
     });
   }, []);
 
-  // Keyboard shortcut (Space to start)
+  const handleForceReset = useCallback(() => {
+    if (gameState === 'playing' || gameState === 'countdown') {
+      const ok = window.confirm('진행 중인 게임을 즉시 중지하고 대기실로 리셋하시겠습니까?');
+      if (!ok) return;
+    }
+    handleResetGame();
+  }, [gameState, handleResetGame]);
+
+  // Keyboard shortcut (Space to start, Escape to reset)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && gameState === 'waiting') {
         e.preventDefault();
         handleStartGame();
+      } else if (e.code === 'Escape' && (gameState === 'playing' || gameState === 'countdown')) {
+        e.preventDefault();
+        handleForceReset();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, handleStartGame]);
+  }, [gameState, handleStartGame, handleForceReset]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -419,6 +430,17 @@ export default function ScreenPage() {
             <span>{activePlayers.length}명 참여 중</span>
           </div>
 
+          {gameState !== 'waiting' && (
+            <button
+              onClick={handleForceReset}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/90 hover:bg-rose-900 border border-rose-600/80 text-rose-300 hover:text-white font-mono text-xs font-bold shadow-[0_0_12px_rgba(244,63,94,0.3)] transition-all cursor-pointer animate-pulse"
+              title="게임을 즉시 중지하고 대기실로 리셋 (ESC)"
+            >
+              <Square size={13} className="fill-rose-400 stroke-none" />
+              <span>일괄 중지 (ESC)</span>
+            </button>
+          )}
+
           <SoundToggle />
 
           <button
@@ -535,6 +557,13 @@ export default function ScreenPage() {
             <p className="text-lg sm:text-xl font-mono text-slate-300 font-bold mt-4">
               3초 후 20초 배틀이 시작됩니다!
             </p>
+            <button
+              onClick={handleForceReset}
+              className="mt-8 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900/80 hover:bg-rose-950 border border-slate-700 hover:border-rose-600 text-slate-400 hover:text-rose-300 text-xs font-mono transition-all cursor-pointer"
+            >
+              <Square size={13} className="fill-rose-400 stroke-none" />
+              <span>카운트다운 취소 및 리셋 (ESC)</span>
+            </button>
           </div>
         )}
 
@@ -550,16 +579,27 @@ export default function ScreenPage() {
                 </span>
               </div>
 
-              {/* Large Timer Indicator */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-mono uppercase">TIME LEFT:</span>
-                <span
-                  className={`text-4xl sm:text-5xl font-mono font-black tracking-tight ${
-                    remainingTime <= 5 ? 'text-rose-500 animate-pulse drop-shadow-[0_0_15px_rgba(244,63,94,0.8)]' : 'text-yellow-400'
-                  }`}
+              {/* Large Timer Indicator & Stop Button */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-mono uppercase">TIME LEFT:</span>
+                  <span
+                    className={`text-4xl sm:text-5xl font-mono font-black tracking-tight ${
+                      remainingTime <= 5 ? 'text-rose-500 animate-pulse drop-shadow-[0_0_15px_rgba(244,63,94,0.8)]' : 'text-yellow-400'
+                    }`}
+                  >
+                    {remainingTime.toString().padStart(2, '0')}s
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleForceReset}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-600/80 text-rose-200 hover:text-white text-xs font-mono font-bold shadow-[0_0_12px_rgba(244,63,94,0.3)] active:scale-95 transition-all cursor-pointer"
+                  title="게임을 즉시 중지하고 대기실로 리셋합니다 (ESC)"
                 >
-                  {remainingTime.toString().padStart(2, '0')}s
-                </span>
+                  <Square size={13} className="fill-rose-400 stroke-none" />
+                  <span>게임 일괄 중지</span>
+                </button>
               </div>
             </div>
 
