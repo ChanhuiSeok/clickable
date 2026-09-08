@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
-import { Zap, Flame, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone, ExternalLink, MonitorPlay } from 'lucide-react';
+import { Zap, Flame, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -334,16 +333,6 @@ export default function StudentPage() {
                 배틀 입장하기
               </button>
             </form>
-
-            <div className="mt-4 pt-3 border-t border-slate-800 text-center">
-              <Link
-                href="/screen"
-                className="inline-flex items-center gap-1.5 text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
-              >
-                <MonitorPlay size={14} />
-                <span>발표자이신가요? 프로젝터 화면 열기 (/screen)</span>
-              </Link>
-            </div>
           </div>
         </div>
       )}
@@ -364,7 +353,7 @@ export default function StudentPage() {
             <span>발표자가 게임을 시작할 때까지 대기 중...</span>
           </div>
 
-          <div className="w-full p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs font-mono space-y-2 mb-4">
+          <div className="w-full p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs font-mono space-y-2">
             <div className="flex items-center gap-2 text-slate-300 font-bold">
               <CheckCircle size={15} className="text-cyan-400" />
               <span>플레이 팁</span>
@@ -375,15 +364,6 @@ export default function StudentPage() {
               &bull; 20초 동안 끊임없이 연타하세요!
             </p>
           </div>
-
-          {/* Direct link for host if they opened student view */}
-          <Link
-            href="/screen"
-            className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-cyan-400 hover:text-cyan-300 text-xs font-mono flex items-center justify-center gap-1.5 transition-all"
-          >
-            <MonitorPlay size={15} />
-            <span>발표자이신가요? 발표자/프로젝터 화면으로 이동 (/screen)</span>
-          </Link>
         </div>
       )}
 

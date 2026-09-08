@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Play, RotateCcw, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check } from 'lucide-react';
+import { Play, RotateCcw, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check, Lock, KeyRound, ShieldAlert, LogIn } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -16,6 +16,12 @@ const COUNTDOWN_SECONDS = 3;
 const GAME_DURATION_SECONDS = 20;
 
 export default function ScreenPage() {
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState<boolean>(false);
+
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [countdown, setCountdown] = useState<number>(COUNTDOWN_SECONDS);
@@ -27,6 +33,17 @@ export default function ScreenPage() {
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Check existing session authorization on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('screen_auth');
+      if (saved === 'verified') {
+        setIsAuthorized(true);
+      }
+      setAuthChecking(false);
+    }
+  }, []);
+
   // Initialize join URL on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -35,8 +52,38 @@ export default function ScreenPage() {
     }
   }, []);
 
-  // Initialize Realtime connection
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+
+    setIsSubmittingAuth(true);
+    setAuthError(null);
+
+    try {
+      const res = await fetch('/api/auth/screen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput.trim() }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        sessionStorage.setItem('screen_auth', 'verified');
+        setIsAuthorized(true);
+      } else {
+        setAuthError(data.message || '비밀번호가 올바르지 않습니다.');
+      }
+    } catch {
+      setAuthError('인증 서버 통신 실패. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  // Initialize Realtime connection once authorized
   useEffect(() => {
+    if (!isAuthorized) return;
+
     realtime.init('screen');
 
     // Subscribe to presence list updates
@@ -130,7 +177,7 @@ export default function ScreenPage() {
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);
       realtime.disconnect();
     };
-  }, []);
+  }, [isAuthorized]);
 
   const handleEndGame = useCallback(() => {
     if (gameTimerRef.current) clearInterval(gameTimerRef.current);
@@ -270,6 +317,90 @@ export default function ScreenPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleLogout = () => {
+    sessionStorage.removeItem('screen_auth');
+    setIsAuthorized(false);
+    setPasswordInput('');
+  };
+
+  if (authChecking) {
+    return (
+      <main className="min-h-screen arcade-bg text-slate-100 flex items-center justify-center">
+        <div className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">
+          보안 접근 권한 확인 중...
+        </div>
+      </main>
+    );
+  }
+
+  // Password Lock Screen
+  if (!isAuthorized) {
+    return (
+      <main className="min-h-screen arcade-bg text-slate-100 flex flex-col items-center justify-center p-4 scanlines select-none">
+        <div className="w-full max-w-md bg-slate-900/95 border border-cyan-500/40 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(6,182,212,0.2)] backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-center text-cyan-400 mb-4 shadow-[0_0_20px_rgba(6,182,212,0.4)]">
+              <Lock size={32} />
+            </div>
+            <h1 className="text-2xl font-black tracking-wider uppercase text-white mb-1">
+              발표자 보안 화면
+            </h1>
+            <p className="text-xs text-slate-400 font-mono">
+              발표자 전용 대시보드입니다. 비밀번호를 입력해주세요.
+            </p>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-mono text-slate-400 mb-2">
+                비밀번호 (SCREEN_PASSWORD)
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <KeyRound size={18} />
+                </div>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    if (authError) setAuthError(null);
+                  }}
+                  placeholder="비밀번호 입력"
+                  autoFocus
+                  required
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-mono text-base tracking-widest transition-all"
+                />
+              </div>
+            </div>
+
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-600/70 text-rose-300 text-xs font-mono flex items-center gap-2">
+                <ShieldAlert size={16} className="text-rose-400 shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSubmittingAuth || !passwordInput.trim()}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-50 text-slate-950 font-black font-mono tracking-wider uppercase text-base shadow-[0_0_25px_rgba(6,182,212,0.4)] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <LogIn size={18} />
+              <span>{isSubmittingAuth ? '확인 중...' : '잠금 해제 (ENTER)'}</span>
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-[11px] text-slate-500 font-mono">
+              * 환경변수 미설정 시 기본 비밀번호: <code className="text-cyan-400">1234</code>
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const activePlayers = participants.filter((p) => p.role !== 'screen');
 
   return (
@@ -309,6 +440,14 @@ export default function ScreenPage() {
           </div>
 
           <SoundToggle />
+
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-rose-700/60 text-slate-400 hover:text-rose-400 cursor-pointer transition-colors"
+            title="화면 잠금 / 로그아웃"
+          >
+            <Lock size={18} />
+          </button>
 
           <button
             onClick={toggleFullscreen}
