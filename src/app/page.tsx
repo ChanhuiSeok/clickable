@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone, Dices } from 'lucide-react';
+import { Zap, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone, Dices, Edit3 } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -11,7 +11,19 @@ const AVATARS = ['⚡', '🔥', '🚀', '🐱', '👾', '👑', '🥊', '🎯', 
 const BATCH_INTERVAL_MS = 200;
 const MAX_ALLOWED_CPS = 70; // 70 clicks per second anti-cheat threshold
 
+// Helper to get or create unique tab session ID
+function getTabSessionId(): string {
+  if (typeof window === 'undefined') return '';
+  let id = sessionStorage.getItem('click_battle_uid');
+  if (!id) {
+    id = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    sessionStorage.setItem('click_battle_uid', id);
+  }
+  return id;
+}
+
 export default function StudentPage() {
+  const [userId] = useState<string>(getTabSessionId);
   const [nickname, setNickname] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return sessionStorage.getItem('click_battle_nick') || localStorage.getItem('click_battle_nick') || '';
@@ -25,7 +37,17 @@ export default function StudentPage() {
     return '⚡';
   });
   const [nicknameError, setNicknameError] = useState<string | null>(null);
-  const [isJoined, setIsJoined] = useState<boolean>(false);
+
+  // Restore isJoined state from sessionStorage so refreshing does NOT kick the user out!
+  const [isJoined, setIsJoined] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const joined = sessionStorage.getItem('click_battle_joined') === 'true';
+      const savedNick = sessionStorage.getItem('click_battle_nick');
+      return Boolean(joined && savedNick && savedNick.trim().length > 0);
+    }
+    return false;
+  });
+
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [countdown, setCountdown] = useState<number>(3);
   const [remainingTime, setRemainingTime] = useState<number>(20);
@@ -38,31 +60,11 @@ export default function StudentPage() {
   const [soundOn, setSoundOn] = useState<boolean>(true);
 
   // Internal references for batching & anti-cheat
-  const userIdRef = useRef<string>('');
   const pendingClicksRef = useRef<number>(0);
   const totalVerifiedClicksRef = useRef<number>(0);
   const lastBatchTimeRef = useRef<number>(0);
   const batchIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const clientTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize or restore saved clientId per tab session
-  useEffect(() => {
-    let savedId = sessionStorage.getItem('click_battle_uid');
-    if (!savedId) {
-      savedId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      sessionStorage.setItem('click_battle_uid', savedId);
-    }
-    userIdRef.current = savedId;
-  }, []);
-
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (batchIntervalRef.current) clearInterval(batchIntervalRef.current);
-      if (clientTimerRef.current) clearInterval(clientTimerRef.current);
-      realtime.disconnect();
-    };
-  }, []);
 
   // Start 200ms batch dispatch loop
   const startBatchingLoop = useCallback(() => {
@@ -100,7 +102,7 @@ export default function StudentPage() {
 
       // Broadcast score batch to projector screen and others
       const batchPayload: ScoreBatchPayload = {
-        id: userIdRef.current,
+        id: userId,
         nickname: nickname.trim() || '익명',
         avatar,
         addedClicks: added,
@@ -110,38 +112,15 @@ export default function StudentPage() {
       };
       realtime.sendScoreBatch(batchPayload);
     }, BATCH_INTERVAL_MS);
-  }, [nickname, avatar]);
+  }, [userId, nickname, avatar]);
 
-  const handleRandomNickname = () => {
-    const adjectives = ['불꽃', '번개', '광속', '질주', '강철', '황금', '초고속', '전설의', '승리의', '폭풍'];
-    const nouns = ['치타', '호랑이', '클리커', '파이터', '타이퍼', '펀처', '장인', '지존', '손가락', '질주마'];
-    const randomNick = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}`;
-    setNickname(randomNick);
-    setNicknameError(null);
-  };
-
-  // Handle joining the room
-  const handleJoin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = nickname.trim();
-    if (!trimmed) return;
-
-    // Badwords / Profanity filter
-    const profanity = checkProfanity(trimmed);
-    if (!profanity.isClean) {
-      setNicknameError('비속어나 부적절한 단어가 포함된 닉네임은 사용할 수 없습니다.');
-      return;
-    }
-
-    setNicknameError(null);
-    sessionStorage.setItem('click_battle_nick', trimmed);
-    sessionStorage.setItem('click_battle_avatar', avatar);
-
-    setIsJoined(true);
+  // Connect to Realtime channel whenever joined (including after refresh)
+  useEffect(() => {
+    if (!isJoined || !userId) return;
 
     const userObj: Partial<Participant> = {
-      id: userIdRef.current,
-      nickname: nickname.trim(),
+      id: userId,
+      nickname: nickname.trim() || '익명',
       avatar,
       score: 0,
       lastCps: 0,
@@ -150,7 +129,7 @@ export default function StudentPage() {
     realtime.init('student', userObj);
 
     // Listen to Game Control broadcasts from Screen
-    realtime.onGameControl((payload: GameControlPayload) => {
+    const unsubControl = realtime.onGameControl((payload: GameControlPayload) => {
       if (payload.action === 'countdown') {
         setGameState('countdown');
         setCountdown(payload.countdownSec || 3);
@@ -205,6 +184,47 @@ export default function StudentPage() {
         if (clientTimerRef.current) clearInterval(clientTimerRef.current);
       }
     });
+
+    return () => {
+      unsubControl();
+      if (batchIntervalRef.current) clearInterval(batchIntervalRef.current);
+      if (clientTimerRef.current) clearInterval(clientTimerRef.current);
+      realtime.disconnect();
+    };
+  }, [isJoined, userId, nickname, avatar, startBatchingLoop]);
+
+  const handleRandomNickname = () => {
+    const adjectives = ['불꽃', '번개', '광속', '질주', '강철', '황금', '초고속', '전설의', '승리의', '폭풍'];
+    const nouns = ['치타', '호랑이', '클리커', '파이터', '타이퍼', '펀처', '장인', '지존', '손가락', '질주마'];
+    const randomNick = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}`;
+    setNickname(randomNick);
+    setNicknameError(null);
+  };
+
+  // Handle joining the room
+  const handleJoin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = nickname.trim();
+    if (!trimmed) return;
+
+    // Badwords / Profanity filter
+    const profanity = checkProfanity(trimmed);
+    if (!profanity.isClean) {
+      setNicknameError('비속어나 부적절한 단어가 포함된 닉네임은 사용할 수 없습니다.');
+      return;
+    }
+
+    setNicknameError(null);
+    sessionStorage.setItem('click_battle_nick', trimmed);
+    sessionStorage.setItem('click_battle_avatar', avatar);
+    sessionStorage.setItem('click_battle_joined', 'true');
+
+    setIsJoined(true);
+  };
+
+  const handleEditProfile = () => {
+    sessionStorage.setItem('click_battle_joined', 'false');
+    setIsJoined(false);
   };
 
   // Main Click Handler (High-performance, haptic feedback)
@@ -319,7 +339,7 @@ export default function StudentPage() {
                       key={emoji}
                       type="button"
                       onClick={() => setAvatar(emoji)}
-                      className={`h-11 rounded-xl text-xl flex items-center justify-center transition-all ${
+                      className={`h-11 rounded-xl text-xl flex items-center justify-center transition-all cursor-pointer ${
                         avatar === emoji
                           ? 'bg-cyan-500/30 border-2 border-cyan-400 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
                           : 'bg-slate-800/60 border border-slate-700 hover:bg-slate-800'
@@ -386,20 +406,29 @@ export default function StudentPage() {
       {/* Screen 2: WAITING ROOM */}
       {isJoined && gameState === 'waiting' && (
         <div className="w-full max-w-md flex-1 flex flex-col justify-center items-center text-center py-8">
-          <div className="w-24 h-24 rounded-3xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-center text-5xl mb-6 shadow-[0_0_30px_rgba(6,182,212,0.3)] animate-bounce">
+          <div className="w-24 h-24 rounded-3xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-center text-5xl mb-4 shadow-[0_0_30px_rgba(6,182,212,0.3)] animate-bounce">
             {avatar}
           </div>
 
-          <h2 className="text-2xl font-black text-white mb-2">
-            <span className="text-cyan-400">{nickname}</span>님 준비 완료!
-          </h2>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-2xl font-black text-white">
+              <span className="text-cyan-400">{nickname}</span>님 준비 완료!
+            </h2>
+            <button
+              onClick={handleEditProfile}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-300 text-xs transition-colors cursor-pointer"
+              title="닉네임/아바타 변경"
+            >
+              <Edit3 size={15} />
+            </button>
+          </div>
 
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-950/50 border border-cyan-800 text-cyan-300 font-mono text-xs mb-6">
             <Sparkles size={14} className="animate-spin" />
             <span>발표자가 게임을 시작할 때까지 대기 중...</span>
           </div>
 
-          <div className="w-full p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs font-mono space-y-2">
+          <div className="w-full p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs font-mono space-y-2 mb-4">
             <div className="flex items-center gap-2 text-slate-300 font-bold">
               <CheckCircle size={15} className="text-cyan-400" />
               <span>플레이 팁</span>
@@ -410,6 +439,13 @@ export default function StudentPage() {
               &bull; 20초 동안 끊임없이 연타하세요!
             </p>
           </div>
+
+          <button
+            onClick={handleEditProfile}
+            className="text-xs font-mono text-slate-500 hover:text-slate-300 underline cursor-pointer"
+          >
+            닉네임이나 아바타를 바꾸고 싶으신가요?
+          </button>
         </div>
       )}
 
