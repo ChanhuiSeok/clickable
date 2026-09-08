@@ -73,12 +73,13 @@ npm run dev
 ## 🌐 Supabase Realtime 설정 (Vercel 배포 시 권장)
 
 1. [Supabase](https://supabase.com)에 로그인 후 새 프로젝트를 생성합니다.
-2. 프로젝트 대시보드 -> **Project Settings** -> **API** 메뉴로 이동합니다.
+2. 프로젝트 대시보드 -> **Project Settings** -> **API** (또는 **API Keys**) 메뉴로 이동합니다.
 3. 다음 두 값을 복사합니다:
    - `Project URL` -> `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public key` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. 별도의 SQL 테이블 생성은 전혀 필요하지 않습니다! (Broadcast & Presence만 사용)
-5. Vercel 배포 시 해당 환경변수를 등록하면 전 세계 어디서든 학생들이 스마트폰으로 동시 접속할 수 있습니다.
+   - **Publishable Key** (최신 대시보드) 또는 `anon public` key (기존 대시보드) -> `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (또는 `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+   > ⚠️ **주의**: `Secret key` (구 `service_role` key)는 서버 전용 비공개 키이므로 클라이언트 애플리케이션에 절대로 입력하지 마세요! 브라우저/클라이언트에는 반드시 **Publishable Key**를 사용해야 합니다.
+4. 별도의 SQL 테이블 생성은 전혀 필요하지 않습니다! (Realtime Broadcast & Presence만 사용)
+5. Vercel 배포 시 환경 변수에 등록하면 전 세계 어디서든 학생들이 스마트폰으로 동시 접속할 수 있습니다.
 
 ---
 
