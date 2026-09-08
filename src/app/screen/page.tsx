@@ -13,7 +13,7 @@ import ConfettiEffect from '@/components/ConfettiEffect';
 import SoundToggle from '@/components/SoundToggle';
 
 const COUNTDOWN_SECONDS = 3;
-const GAME_DURATION_SECONDS = 20;
+const GAME_DURATION_SECONDS = 15;
 
 export default function ScreenPage() {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
@@ -28,6 +28,8 @@ export default function ScreenPage() {
 
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [isFinalRound, setIsFinalRound] = useState<boolean>(false);
+  const [finalQualifiedIds, setFinalQualifiedIds] = useState<string[]>([]);
   const [countdown, setCountdown] = useState<number>(COUNTDOWN_SECONDS);
   const [remainingTime, setRemainingTime] = useState<number>(GAME_DURATION_SECONDS);
   const [joinUrl] = useState<string>(() => {
@@ -41,6 +43,13 @@ export default function ScreenPage() {
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFinalRoundRef = useRef<boolean>(false);
+  const finalQualifiedIdsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    isFinalRoundRef.current = isFinalRound;
+    finalQualifiedIdsRef.current = finalQualifiedIds;
+  }, [isFinalRound, finalQualifiedIds]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +137,11 @@ export default function ScreenPage() {
 
     // Subscribe to score batches
     const unsubScore = realtime.onScoreBatch((batch: ScoreBatchPayload) => {
+      // If final round is in progress, only accept score updates from qualified players
+      if (isFinalRoundRef.current && finalQualifiedIdsRef.current.length > 0) {
+        if (!finalQualifiedIdsRef.current.includes(batch.id)) return;
+      }
+
       setParticipants((prev) => {
         const map = new Map(prev.map((p) => [p.id, p]));
         const existing = map.get(batch.id);
@@ -190,6 +204,11 @@ export default function ScreenPage() {
   const handleStartGame = useCallback(() => {
     if (gameState !== 'waiting') return;
 
+    setIsFinalRound(false);
+    setFinalQualifiedIds([]);
+    isFinalRoundRef.current = false;
+    finalQualifiedIdsRef.current = [];
+
     // Reset scores for new round
     setParticipants((prev) =>
       prev.map((p) => ({
@@ -209,6 +228,7 @@ export default function ScreenPage() {
       action: 'countdown',
       countdownSec: COUNTDOWN_SECONDS,
       gameDuration: GAME_DURATION_SECONDS,
+      isFinalRound: false,
     };
     realtime.sendGameControl(countdownPayload);
 
@@ -235,10 +255,11 @@ export default function ScreenPage() {
           gameDuration: GAME_DURATION_SECONDS,
           startTime,
           endTime,
+          isFinalRound: false,
         };
         realtime.sendGameControl(startPayload);
 
-        // Start 20s game countdown
+        // Start 15s game countdown
         let rem = GAME_DURATION_SECONDS;
         if (gameTimerRef.current) clearInterval(gameTimerRef.current);
 
@@ -258,9 +279,97 @@ export default function ScreenPage() {
     }, 1000);
   }, [gameState, handleEndGame]);
 
+  const handleStartFinalRound = useCallback(() => {
+    if (gameState !== 'ended') return;
+
+    const sorted = [...participants].sort((a, b) => b.score - a.score);
+    const qualified = sorted.slice(0, 15).map((p) => p.id);
+
+    setIsFinalRound(true);
+    setFinalQualifiedIds(qualified);
+    isFinalRoundRef.current = true;
+    finalQualifiedIdsRef.current = qualified;
+
+    // Reset scores for final round
+    setParticipants((prev) =>
+      prev.map((p) => ({
+        ...p,
+        score: 0,
+        lastCps: 0,
+        maxCps: 0,
+      }))
+    );
+
+    setGameState('countdown');
+    setCountdown(COUNTDOWN_SECONDS);
+    sound.playCountdownBeep(false);
+
+    // Broadcast countdown for final round
+    const countdownPayload: GameControlPayload = {
+      action: 'countdown',
+      countdownSec: COUNTDOWN_SECONDS,
+      gameDuration: GAME_DURATION_SECONDS,
+      isFinalRound: true,
+      qualifiedPlayerIds: qualified,
+    };
+    realtime.sendGameControl(countdownPayload);
+
+    let cd = COUNTDOWN_SECONDS;
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+
+    countdownTimerRef.current = setInterval(() => {
+      cd -= 1;
+      if (cd > 0) {
+        setCountdown(cd);
+        sound.playCountdownBeep(false);
+      } else {
+        clearInterval(countdownTimerRef.current!);
+        setGameState('playing');
+        setRemainingTime(GAME_DURATION_SECONDS);
+        sound.playCountdownBeep(true);
+
+        const startTime = Date.now();
+        const endTime = startTime + GAME_DURATION_SECONDS * 1000;
+
+        // Broadcast game start for final round
+        const startPayload: GameControlPayload = {
+          action: 'start',
+          gameDuration: GAME_DURATION_SECONDS,
+          startTime,
+          endTime,
+          isFinalRound: true,
+          qualifiedPlayerIds: qualified,
+        };
+        realtime.sendGameControl(startPayload);
+
+        // Start 15s game countdown
+        let rem = GAME_DURATION_SECONDS;
+        if (gameTimerRef.current) clearInterval(gameTimerRef.current);
+
+        gameTimerRef.current = setInterval(() => {
+          rem -= 1;
+          setRemainingTime(rem);
+
+          if (rem <= 5 && rem > 0) {
+            sound.playCountdownBeep(false);
+          }
+
+          if (rem <= 0) {
+            handleEndGame();
+          }
+        }, 1000);
+      }
+    }, 1000);
+  }, [gameState, participants, handleEndGame]);
+
   const handleResetGame = useCallback(() => {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     if (gameTimerRef.current) clearInterval(gameTimerRef.current);
+
+    setIsFinalRound(false);
+    setFinalQualifiedIds([]);
+    isFinalRoundRef.current = false;
+    finalQualifiedIdsRef.current = [];
 
     setGameState('waiting');
     setCountdown(COUNTDOWN_SECONDS);
@@ -397,6 +506,9 @@ export default function ScreenPage() {
   }
 
   const activePlayers = participants.filter((p) => p.role !== 'screen');
+  const displayedParticipants = isFinalRound && finalQualifiedIds.length > 0
+    ? participants.filter((p) => finalQualifiedIds.includes(p.id))
+    : participants;
 
   return (
     <main className="min-h-screen arcade-bg text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8 select-none scanlines">
@@ -413,7 +525,7 @@ export default function ScreenPage() {
             <h1 className="text-xl sm:text-2xl font-black tracking-wider uppercase flex items-center gap-2">
               <span className="neon-text-cyan">CLICK BATTLE</span>
               <span className="text-xs font-mono font-normal px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800">
-                20s ARENA
+                15s ARENA
               </span>
             </h1>
             <p className="text-xs text-slate-400 font-mono">
@@ -541,7 +653,7 @@ export default function ScreenPage() {
                 <span>게임 시작 (SPACE)</span>
               </button>
               <p className="text-xs text-slate-400 font-mono mt-3">
-                * [게임 시작]을 누르면 3초 카운트다운 후 20초간 배틀이 시작됩니다.
+                * [게임 시작]을 누르면 3초 카운트다운 후 15초간 배틀이 시작됩니다.
               </p>
             </div>
           </div>
@@ -551,15 +663,19 @@ export default function ScreenPage() {
         {gameState === 'countdown' && (
           <div className="flex-1 min-h-[500px] flex flex-col items-center justify-center text-center">
             <div className="text-xs font-mono tracking-widest text-cyan-400 uppercase mb-4 animate-pulse">
-              GET READY! PREPARE YOUR FINGERS
+              {isFinalRound ? '🏆 FINAL TOURNAMENT GET READY!' : 'GET READY! PREPARE YOUR FINGERS'}
             </div>
             <div className="relative">
-              <span className="text-9xl sm:text-[14rem] font-black font-mono text-transparent bg-clip-text bg-gradient-to-b from-cyan-200 via-sky-400 to-indigo-600 drop-shadow-[0_0_50px_rgba(56,189,248,0.8)] animate-in zoom-in-50 duration-300">
+              <span className={`text-9xl sm:text-[14rem] font-black font-mono text-transparent bg-clip-text drop-shadow-[0_0_50px_rgba(56,189,248,0.8)] animate-in zoom-in-50 duration-300 ${
+                isFinalRound
+                  ? 'bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-500 drop-shadow-[0_0_60px_rgba(250,204,21,0.8)]'
+                  : 'bg-gradient-to-b from-cyan-200 via-sky-400 to-indigo-600'
+              }`}>
                 {countdown}
               </span>
             </div>
             <p className="text-lg sm:text-xl font-mono text-slate-300 font-bold mt-4">
-              3초 후 20초 배틀이 시작됩니다!
+              {isFinalRound ? '3초 후 TOP 15 결선 배틀이 시작됩니다!' : '3초 후 15초 배틀이 시작됩니다!'}
             </p>
             <button
               onClick={handleForceReset}
@@ -571,16 +687,27 @@ export default function ScreenPage() {
           </div>
         )}
 
-        {/* State: PLAYING (Realtime 20s Battle) */}
+        {/* State: PLAYING (Realtime 15s Battle) */}
         {gameState === 'playing' && (
           <div className="w-full flex flex-col gap-5">
             {/* Top Timer Banner */}
-            <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-2xl px-6 py-4 backdrop-blur-md">
+            <div className={`flex items-center justify-between border rounded-2xl px-6 py-4 backdrop-blur-md ${
+              isFinalRound
+                ? 'bg-slate-900/90 border-yellow-500/60 shadow-[0_0_30px_rgba(234,179,8,0.2)]'
+                : 'bg-slate-900/80 border-slate-800'
+            }`}>
               <div className="flex items-center gap-3">
-                <span className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping" />
-                <span className="font-mono font-black text-rose-400 tracking-wider uppercase text-sm sm:text-base">
-                  BATTLE IN PROGRESS
+                <span className={`w-3.5 h-3.5 rounded-full animate-ping ${isFinalRound ? 'bg-yellow-400' : 'bg-rose-500'}`} />
+                <span className={`font-mono font-black tracking-wider uppercase text-sm sm:text-base ${
+                  isFinalRound ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'text-rose-400'
+                }`}>
+                  {isFinalRound ? '🏆 TOP 15 FINAL TOURNAMENT' : 'BATTLE IN PROGRESS'}
                 </span>
+                {isFinalRound && (
+                  <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-yellow-950/80 border border-yellow-500/60 text-yellow-300 font-mono text-xs font-bold">
+                    15인 결승전
+                  </span>
+                )}
               </div>
 
               {/* Large Timer Indicator & Stop Button */}
@@ -589,7 +716,11 @@ export default function ScreenPage() {
                   <span className="text-xs text-slate-400 font-mono uppercase">TIME LEFT:</span>
                   <span
                     className={`text-4xl sm:text-5xl font-mono font-black tracking-tight ${
-                      remainingTime <= 5 ? 'text-rose-500 animate-pulse drop-shadow-[0_0_15px_rgba(244,63,94,0.8)]' : 'text-yellow-400'
+                      remainingTime <= 5
+                        ? 'text-rose-500 animate-pulse drop-shadow-[0_0_15px_rgba(244,63,94,0.8)]'
+                        : isFinalRound
+                        ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.5)]'
+                        : 'text-yellow-400'
                     }`}
                   >
                     {remainingTime.toString().padStart(2, '0')}s
@@ -607,21 +738,34 @@ export default function ScreenPage() {
               </div>
             </div>
 
-            {/* Realtime 1~30 Ranking Board (2 columns) */}
-            <RankingColumns participants={participants} isGameOver={false} />
+            {/* Realtime Ranking Board */}
+            <RankingColumns
+              participants={displayedParticipants}
+              isGameOver={false}
+              isFinalRound={isFinalRound}
+            />
           </div>
         )}
 
         {/* State: ENDED (Podium & Reset) */}
         {gameState === 'ended' && (
           <div className="w-full flex flex-col gap-6">
-            <Podium participants={participants} onReset={handleResetGame} />
+            <Podium
+              participants={displayedParticipants}
+              onReset={handleResetGame}
+              onStartFinal={handleStartFinalRound}
+              isFinalRound={isFinalRound}
+            />
 
             <div className="mt-4">
               <h3 className="text-sm font-mono text-slate-400 uppercase tracking-wider mb-3 px-1">
-                전체 참가자 최종 순위표 (TOP 40)
+                {isFinalRound ? '🏆 결승전 최종 순위표 (TOP 15)' : '전체 참가자 최종 순위표 (TOP 40)'}
               </h3>
-              <RankingColumns participants={participants} isGameOver={true} />
+              <RankingColumns
+                participants={displayedParticipants}
+                isGameOver={true}
+                isFinalRound={isFinalRound}
+              />
             </div>
           </div>
         )}
@@ -629,7 +773,7 @@ export default function ScreenPage() {
 
       {/* Screen Footer */}
       <footer className="mt-8 pt-4 border-t border-slate-900 text-center text-xs font-mono text-slate-600 flex items-center justify-between">
-        <span>Click Battle 20s &bull; High School Edition</span>
+        <span>Click Battle 15s &bull; High School Edition</span>
         <span>Powered by Next.js &amp; Supabase Realtime</span>
       </footer>
     </main>

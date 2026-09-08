@@ -1,15 +1,17 @@
 'use client';
 
 import React from 'react';
-import { Crown, Trophy, RotateCcw, Medal } from 'lucide-react';
+import { Crown, Trophy, RotateCcw, Medal, Swords } from 'lucide-react';
 import { Participant } from '@/types/game';
 
 interface PodiumProps {
   participants: Participant[];
   onReset: () => void;
+  onStartFinal?: () => void;
+  isFinalRound?: boolean;
 }
 
-export default function Podium({ participants, onReset }: PodiumProps) {
+export default function Podium({ participants, onReset, onStartFinal, isFinalRound }: PodiumProps) {
   const sorted = [...participants].sort((a, b) => b.score - a.score);
   const first = sorted[0];
   const second = sorted[1];
@@ -19,12 +21,12 @@ export default function Podium({ participants, onReset }: PodiumProps) {
     <div className="w-full bg-slate-900/90 border border-yellow-500/40 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-[0_0_50px_rgba(234,179,8,0.15)] flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
       <div className="flex items-center gap-2 text-yellow-400 font-mono font-bold text-sm sm:text-base tracking-widest uppercase mb-1">
         <Trophy className="animate-bounce" size={20} />
-        <span>VICTORY CEREMONY</span>
+        <span>{isFinalRound ? 'FINAL CHAMPIONSHIP CEREMONY' : 'ROUND 1 VICTORY CEREMONY'}</span>
         <Trophy className="animate-bounce" size={20} />
       </div>
 
       <h2 className="text-3xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-amber-400 to-yellow-500 tracking-tight drop-shadow-md mb-8">
-        최종 배틀 결과
+        {isFinalRound ? '🏆 결승전 최종 챔피언 🏆' : '1라운드 배틀 결과'}
       </h2>
 
       {/* Podium Display (2nd - 1st - 3rd) */}
@@ -97,13 +99,23 @@ export default function Podium({ participants, onReset }: PodiumProps) {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        {!isFinalRound && onStartFinal && sorted.length >= 2 && (
+          <button
+            onClick={onStartFinal}
+            className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black font-mono tracking-wider rounded-xl shadow-[0_0_25px_rgba(250,204,21,0.5)] hover:shadow-[0_0_35px_rgba(250,204,21,0.8)] active:scale-95 transition-all text-base sm:text-lg cursor-pointer animate-pulse"
+          >
+            <Swords size={22} className="stroke-[2.5]" />
+            <span>TOP 15 결선 배틀 시작! (15s FINAL)</span>
+          </button>
+        )}
+
         <button
           onClick={onReset}
-          className="flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black font-mono tracking-wider rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] active:scale-95 transition-all text-base sm:text-lg cursor-pointer"
+          className="flex items-center gap-2 px-6 py-3.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-slate-200 hover:text-white font-bold font-mono tracking-wider rounded-xl active:scale-95 transition-all text-sm sm:text-base cursor-pointer"
         >
-          <RotateCcw size={20} className="stroke-[3]" />
-          <span>새 게임 시작 (RESET)</span>
+          <RotateCcw size={18} />
+          <span>{isFinalRound ? '새 게임 시작 (RESET)' : '전체 리셋 / 새 게임'}</span>
         </button>
       </div>
     </div>

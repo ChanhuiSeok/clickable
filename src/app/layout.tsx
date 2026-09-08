@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "⚡ 20초 클릭 배틀 (Click Battle) | 실시간 40인 대결",
-  description: "고등학생 40명을 위한 실시간 20초 초고속 클릭 배틀 웹 애플리케이션",
+  title: "⚡ 15초 클릭 배틀 (Click Battle) | 실시간 40인 대결 & TOP 15 결선",
+  description: "고등학생 40명을 위한 실시간 15초 초고속 클릭 배틀 및 TOP 15 토너먼트 결선 웹 애플리케이션",
 };
 
 export const viewport: Viewport = {

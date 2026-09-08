@@ -10,14 +10,17 @@ export interface Participant {
   rank?: number;
   lastActive: number;
   role?: 'student' | 'screen';
+  isQualified?: boolean;
 }
 
 export interface GameControlPayload {
   action: 'countdown' | 'start' | 'end' | 'reset';
   countdownSec?: number;
-  gameDuration?: number; // default 20
+  gameDuration?: number; // default 15
   startTime?: number; // timestamp ms
   endTime?: number; // timestamp ms
+  isFinalRound?: boolean;
+  qualifiedPlayerIds?: string[];
 }
 
 export interface ScoreBatchPayload {

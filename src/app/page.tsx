@@ -50,7 +50,10 @@ export default function StudentPage() {
 
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [countdown, setCountdown] = useState<number>(3);
-  const [remainingTime, setRemainingTime] = useState<number>(20);
+  const [remainingTime, setRemainingTime] = useState<number>(15);
+  const [isFinalRound, setIsFinalRound] = useState<boolean>(false);
+  const [isQualified, setIsQualified] = useState<boolean>(true);
+  const isQualifiedRef = useRef<boolean>(true);
 
   // Gameplay local state
   const [localClicks, setLocalClicks] = useState<number>(0);
@@ -58,6 +61,10 @@ export default function StudentPage() {
   const [cheatWarning, setCheatWarning] = useState<string | null>(null);
   const [tapParticles, setTapParticles] = useState<{ id: number; x: number; y: number; text: string }[]>([]);
   const [soundOn, setSoundOn] = useState<boolean>(true);
+
+  useEffect(() => {
+    isQualifiedRef.current = isQualified;
+  }, [isQualified]);
 
   // Internal references for batching & anti-cheat
   const pendingClicksRef = useRef<number>(0);
@@ -168,6 +175,15 @@ export default function StudentPage() {
     // Listen to Game Control broadcasts from Screen
     const unsubControl = realtime.onGameControl((payload: GameControlPayload) => {
       if (payload.action === 'countdown') {
+        const isFinal = Boolean(payload.isFinalRound);
+        const qualified = isFinal
+          ? Boolean(payload.qualifiedPlayerIds && payload.qualifiedPlayerIds.includes(userId))
+          : true;
+
+        setIsFinalRound(isFinal);
+        setIsQualified(qualified);
+        isQualifiedRef.current = qualified;
+
         setGameState('countdown');
         setCountdown(payload.countdownSec || 3);
         setLocalClicks(0);
@@ -187,35 +203,54 @@ export default function StudentPage() {
           }
         }, 1000);
       } else if (payload.action === 'start') {
+        const isFinal = Boolean(payload.isFinalRound);
+        const qualified = isFinal
+          ? Boolean(payload.qualifiedPlayerIds && payload.qualifiedPlayerIds.includes(userId))
+          : true;
+
+        setIsFinalRound(isFinal);
+        setIsQualified(qualified);
+        isQualifiedRef.current = qualified;
+
         setGameState('playing');
-        setRemainingTime(payload.gameDuration || 20);
+        const duration = payload.gameDuration || 15;
+        setRemainingTime(duration);
         setLocalClicks(0);
         totalVerifiedClicksRef.current = 0;
         pendingClicksRef.current = 0;
-        sound.playCountdownBeep(true);
 
-        // Start 200ms batch transmission
-        startBatchingLoop();
+        if (qualified) {
+          sound.playCountdownBeep(true);
+          // Start 200ms batch transmission
+          startBatchingLoop();
+        }
 
         // Local game timer display
-        let rem = payload.gameDuration || 20;
+        let rem = duration;
         if (clientTimerRef.current) clearInterval(clientTimerRef.current);
         clientTimerRef.current = setInterval(() => {
           rem -= 1;
           setRemainingTime(rem);
           if (rem <= 0) {
             clearInterval(clientTimerRef.current!);
-            flushPendingClicks();
+            if (isQualifiedRef.current) {
+              flushPendingClicks();
+            }
           }
         }, 1000);
       } else if (payload.action === 'end') {
         // 즉시 마지막 버저비터 잔여 클릭 Flush 후 종료
-        flushPendingClicks();
+        if (isQualifiedRef.current) {
+          flushPendingClicks();
+        }
         setGameState('ended');
         if (clientTimerRef.current) clearInterval(clientTimerRef.current);
         sound.playFinish();
       } else if (payload.action === 'reset') {
         setGameState('waiting');
+        setIsFinalRound(false);
+        setIsQualified(true);
+        isQualifiedRef.current = true;
         setLocalClicks(0);
         totalVerifiedClicksRef.current = 0;
         pendingClicksRef.current = 0;
@@ -326,7 +361,7 @@ export default function StudentPage() {
           <span className="text-xl">{avatar}</span>
           <div>
             <div className="font-bold text-sm tracking-wide text-cyan-300">
-              {isJoined ? nickname : '20초 클릭 배틀'}
+              {isJoined ? nickname : '15초 클릭 배틀'}
             </div>
             <div className="text-[10px] font-mono text-slate-500">
               {isJoined ? '온라인 참가 중' : '고등학생 40인 배틀'}
@@ -364,7 +399,7 @@ export default function StudentPage() {
                 배틀 참가 등록
               </h1>
               <p className="text-xs text-slate-400 font-mono mt-1">
-                20초 동안 가장 많은 클릭을 달성하세요!
+                15초 동안 가장 많은 클릭을 달성하세요!
               </p>
             </div>
 
@@ -475,7 +510,7 @@ export default function StudentPage() {
             <p className="text-left text-slate-400 leading-relaxed">
               &bull; 시작 신호와 함께 대형 버튼이 나타납니다.<br />
               &bull; 양손 두 손가락으로 번갈아 누르면 고득점 가능!<br />
-              &bull; 20초 동안 끊임없이 연타하세요!
+              &bull; 15초 동안 끊임없이 연타하세요!
             </p>
           </div>
 
@@ -492,27 +527,96 @@ export default function StudentPage() {
       {isJoined && gameState === 'countdown' && (
         <div className="w-full max-w-md flex-1 flex flex-col items-center justify-center text-center">
           <div className="text-xs font-mono text-yellow-400 uppercase tracking-widest mb-3 animate-pulse">
-            GET READY!
+            {isFinalRound
+              ? isQualified
+                ? '🏆 TOP 15 결선 진출! GET READY!'
+                : '🍿 결선 관전 준비 중...'
+              : 'GET READY!'}
           </div>
-          <div className="text-9xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-600 drop-shadow-[0_0_40px_rgba(250,204,21,0.6)] animate-in zoom-in-50 duration-300">
+          <div className={`text-9xl font-black font-mono text-transparent bg-clip-text drop-shadow-[0_0_40px_rgba(250,204,21,0.6)] animate-in zoom-in-50 duration-300 ${
+            isFinalRound
+              ? 'bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-600'
+              : 'bg-gradient-to-b from-cyan-200 via-sky-400 to-indigo-600'
+          }`}>
             {countdown}
           </div>
           <div className="text-slate-400 font-mono text-sm mt-4">
-            손가락을 화면 위에 올려두세요!
+            {isFinalRound
+              ? isQualified
+                ? '결선 챔피언에 도전하세요! 손가락 준비!'
+                : '상위 15명의 결선 배틀이 곧 시작됩니다!'
+              : '손가락을 화면 위에 올려두세요!'}
           </div>
         </div>
       )}
 
-      {/* Screen 4: 20s ACTIVE CLICKING BATTLE */}
-      {isJoined && gameState === 'playing' && (
+      {/* Screen 4-A: SPECTATOR MODE (When not in TOP 15 for Final Round) */}
+      {isJoined && gameState === 'playing' && isFinalRound && !isQualified && (
+        <div className="w-full max-w-md flex-1 flex flex-col justify-between items-center py-4">
+          <div className="w-full bg-slate-900/90 border border-yellow-500/40 rounded-3xl p-6 shadow-2xl backdrop-blur-md text-center flex-1 flex flex-col justify-center items-center">
+            <div className="w-20 h-20 rounded-3xl bg-yellow-950/60 border border-yellow-500/50 flex items-center justify-center text-4xl mb-4 shadow-[0_0_30px_rgba(250,204,21,0.2)] animate-bounce">
+              🍿
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/80 border border-amber-600/60 text-amber-300 font-mono text-xs font-bold mb-3">
+              <span>관전자 모드 (SPECTATOR)</span>
+            </div>
+
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-amber-300 to-yellow-500 mb-2">
+              TOP 15 결선 진행 중!
+            </h2>
+
+            <p className="text-xs text-slate-400 font-mono leading-relaxed mb-6">
+              아쉽게도 상위 15위에 들지 못했습니다.<br />
+              프로젝터 대형 화면에서 펼쳐지는<br />
+              친구들의 결선 명승부를 응원해주세요!
+            </p>
+
+            {/* Remaining Time */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 w-full mb-6">
+              <div className="text-[10px] font-mono text-slate-500 uppercase mb-1">FINAL MATCH TIME LEFT</div>
+              <div className="text-4xl font-black font-mono text-yellow-400">
+                {remainingTime}s
+              </div>
+            </div>
+
+            {/* Cheer Button for Fun Interaction */}
+            <button
+              onClick={() => {
+                if (soundOn) sound.playCountdownBeep(true);
+                if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+                  window.navigator.vibrate(10);
+                }
+              }}
+              className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-yellow-300 font-mono text-sm font-bold active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <span>👏</span>
+              <span>친구들 박수로 응원하기!</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Screen 4-B: ACTIVE CLICKING BATTLE (Regular Round OR Finalist) */}
+      {isJoined && gameState === 'playing' && (!isFinalRound || isQualified) && (
         <div className="w-full max-w-md flex-1 flex flex-col justify-between items-center py-2">
           {/* Realtime Stats Bar */}
-          <div className="w-full flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 backdrop-blur-md">
+          <div className={`w-full flex items-center justify-between border rounded-2xl p-3.5 backdrop-blur-md ${
+            isFinalRound
+              ? 'bg-slate-900/90 border-yellow-500/60 shadow-[0_0_20px_rgba(234,179,8,0.2)]'
+              : 'bg-slate-900/90 border-slate-800'
+          }`}>
             <div>
-              <div className="text-[10px] font-mono text-slate-500 uppercase">TIME LEFT</div>
+              <div className="text-[10px] font-mono text-slate-500 uppercase">
+                {isFinalRound ? '🏆 FINAL' : 'TIME LEFT'}
+              </div>
               <div
                 className={`text-2xl font-black font-mono tracking-tight ${
-                  remainingTime <= 5 ? 'text-rose-500 animate-pulse' : 'text-yellow-400'
+                  remainingTime <= 5
+                    ? 'text-rose-500 animate-pulse'
+                    : isFinalRound
+                    ? 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                    : 'text-yellow-400'
                 }`}
               >
                 {remainingTime}s
@@ -548,20 +652,24 @@ export default function StudentPage() {
             <button
               onTouchStart={handleTap}
               onMouseDown={handleTap}
-              className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full bg-gradient-to-b from-cyan-400 via-sky-500 to-indigo-700 p-2 shadow-[0_0_50px_rgba(6,182,212,0.5)] active:scale-90 active:brightness-125 transition-transform duration-75 cursor-pointer flex flex-col items-center justify-center overflow-hidden active-press select-none"
+              className={`relative w-64 h-64 sm:w-72 sm:h-72 rounded-full p-2 active:scale-90 active:brightness-125 transition-transform duration-75 cursor-pointer flex flex-col items-center justify-center overflow-hidden active-press select-none ${
+                isFinalRound
+                  ? 'bg-gradient-to-b from-yellow-400 via-amber-500 to-amber-700 shadow-[0_0_50px_rgba(250,204,21,0.6)]'
+                  : 'bg-gradient-to-b from-cyan-400 via-sky-500 to-indigo-700 shadow-[0_0_50px_rgba(6,182,212,0.5)]'
+              }`}
               style={{ touchAction: 'manipulation' }}
               aria-label="클릭 버튼"
             >
               {/* Inner ring */}
               <div className="w-full h-full rounded-full bg-slate-950/40 border-4 border-white/30 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-5xl sm:text-6xl mb-1 select-none pointer-events-none drop-shadow-md">
-                  👊
+                  {isFinalRound ? '⚡' : '👊'}
                 </span>
                 <span className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-white uppercase drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] pointer-events-none">
                   TAP!
                 </span>
                 <span className="text-xs font-mono text-cyan-200 font-bold mt-1 pointer-events-none">
-                  연타하세요!
+                  {isFinalRound ? '결승전 연타!' : '연타하세요!'}
                 </span>
               </div>
 
@@ -592,34 +700,52 @@ export default function StudentPage() {
               🏆
             </div>
 
-            <h2 className="text-2xl font-black text-yellow-400 mb-1">배틀 종료!</h2>
+            <h2 className="text-2xl font-black text-yellow-400 mb-1">
+              {isFinalRound ? '🏆 결승전 종료!' : '1라운드 배틀 종료!'}
+            </h2>
             <p className="text-xs text-slate-400 font-mono mb-6">
-              20초 클릭 배틀이 모두 끝났습니다.
+              {isFinalRound
+                ? 'TOP 15 결선 클릭 배틀이 모두 끝났습니다.'
+                : '15초 클릭 배틀이 모두 끝났습니다.'}
             </p>
 
             {/* Score Summary Card */}
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 mb-6">
-              <div>
-                <div className="text-xs font-mono text-slate-500">내 최종 클릭 수</div>
-                <div className="text-4xl font-black font-mono text-cyan-400 mt-1">
-                  {localClicks.toLocaleString()}
+            {(!isFinalRound || isQualified) ? (
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 mb-6">
+                <div>
+                  <div className="text-xs font-mono text-slate-500">
+                    {isFinalRound ? '결승전 최종 클릭 수' : '내 최종 클릭 수'}
+                  </div>
+                  <div className="text-4xl font-black font-mono text-cyan-400 mt-1">
+                    {localClicks.toLocaleString()}
+                  </div>
                 </div>
-              </div>
 
-              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-around text-xs font-mono">
-                <div>
-                  <span className="text-slate-500 block">플레이어</span>
-                  <span className="font-bold text-white">{avatar} {nickname}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">최종 CPS</span>
-                  <span className="font-bold text-cyan-300">{currentCps} CPS</span>
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-around text-xs font-mono">
+                  <div>
+                    <span className="text-slate-500 block">플레이어</span>
+                    <span className="font-bold text-white">{avatar} {nickname}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">최종 CPS</span>
+                    <span className="font-bold text-cyan-300">{currentCps} CPS</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2 mb-6">
+                <div className="text-2xl">🍿</div>
+                <div className="text-sm font-bold text-slate-200">관전 완료!</div>
+                <p className="text-xs text-slate-400 font-mono">
+                  친구들을 멋지게 응원해주셨습니다!
+                </p>
+              </div>
+            )}
 
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs font-mono text-slate-400">
-              📺 프로젝터 화면에서 1~40등 최종 순위와 시상식을 확인하세요!
+              {isFinalRound
+                ? '📺 프로젝터 대형 화면에서 최종 챔피언과 시상식을 확인하세요!'
+                : '📺 프로젝터 대형 화면에서 TOP 15 결선 진출 여부와 순위를 확인하세요!'}
             </div>
           </div>
         </div>
@@ -627,7 +753,7 @@ export default function StudentPage() {
 
       {/* Mobile Footer */}
       <footer className="w-full max-w-md text-center py-2 text-[11px] font-mono text-slate-600">
-        Click Battle &bull; 학생용 모바일 클라이언트
+        Click Battle 15s &bull; 학생용 모바일 클라이언트
       </footer>
     </main>
   );
