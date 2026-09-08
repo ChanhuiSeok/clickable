@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Play, RotateCcw, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check, Lock, KeyRound, ShieldAlert, LogIn } from 'lucide-react';
+import { Play, Users, Maximize, Minimize, Trophy, Sparkles, Copy, Check, Lock, KeyRound, ShieldAlert, LogIn } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -16,8 +16,12 @@ const COUNTDOWN_SECONDS = 3;
 const GAME_DURATION_SECONDS = 20;
 
 export default function ScreenPage() {
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
-  const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('screen_auth') === 'verified';
+    }
+    return false;
+  });
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState<boolean>(false);
@@ -26,31 +30,17 @@ export default function ScreenPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [countdown, setCountdown] = useState<number>(COUNTDOWN_SECONDS);
   const [remainingTime, setRemainingTime] = useState<number>(GAME_DURATION_SECONDS);
-  const [joinUrl, setJoinUrl] = useState<string>('');
+  const [joinUrl] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/`;
+    }
+    return '';
+  });
   const [copied, setCopied] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Check existing session authorization on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('screen_auth');
-      if (saved === 'verified') {
-        setIsAuthorized(true);
-      }
-      setAuthChecking(false);
-    }
-  }, []);
-
-  // Initialize join URL on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const url = `${window.location.origin}/`;
-      setJoinUrl(url);
-    }
-  }, []);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,16 +312,6 @@ export default function ScreenPage() {
     setIsAuthorized(false);
     setPasswordInput('');
   };
-
-  if (authChecking) {
-    return (
-      <main className="min-h-screen arcade-bg text-slate-100 flex items-center justify-center">
-        <div className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">
-          보안 접근 권한 확인 중...
-        </div>
-      </main>
-    );
-  }
 
   // Password Lock Screen
   if (!isAuthorized) {

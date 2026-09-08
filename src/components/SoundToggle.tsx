@@ -1,15 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { sound } from '@/lib/sound';
 
 export default function SoundToggle() {
-  const [enabled, setEnabled] = useState(true);
-
-  useEffect(() => {
-    setEnabled(sound.enabled);
-  }, []);
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? sound.enabled : true;
+  });
 
   const toggle = () => {
     sound.enabled = !enabled;

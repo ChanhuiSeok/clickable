@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, Flame, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone } from 'lucide-react';
+import { Zap, ShieldAlert, Sparkles, CheckCircle, Volume2, VolumeX, Smartphone } from 'lucide-react';
 import { GameState, Participant, GameControlPayload, ScoreBatchPayload } from '@/types/game';
 import { realtime } from '@/lib/realtime';
 import { sound } from '@/lib/sound';
@@ -11,8 +11,18 @@ const BATCH_INTERVAL_MS = 200;
 const MAX_ALLOWED_CPS = 70; // 70 clicks per second anti-cheat threshold
 
 export default function StudentPage() {
-  const [nickname, setNickname] = useState<string>('');
-  const [avatar, setAvatar] = useState<string>('⚡');
+  const [nickname, setNickname] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('click_battle_nick') || localStorage.getItem('click_battle_nick') || '';
+    }
+    return '';
+  });
+  const [avatar, setAvatar] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('click_battle_avatar') || localStorage.getItem('click_battle_avatar') || '⚡';
+    }
+    return '⚡';
+  });
   const [isJoined, setIsJoined] = useState<boolean>(false);
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [countdown, setCountdown] = useState<number>(3);
@@ -29,11 +39,11 @@ export default function StudentPage() {
   const userIdRef = useRef<string>('');
   const pendingClicksRef = useRef<number>(0);
   const totalVerifiedClicksRef = useRef<number>(0);
-  const lastBatchTimeRef = useRef<number>(Date.now());
+  const lastBatchTimeRef = useRef<number>(0);
   const batchIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const clientTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize or restore saved nickname & clientId per tab session
+  // Initialize or restore saved clientId per tab session
   useEffect(() => {
     let savedId = sessionStorage.getItem('click_battle_uid');
     if (!savedId) {
@@ -41,12 +51,6 @@ export default function StudentPage() {
       sessionStorage.setItem('click_battle_uid', savedId);
     }
     userIdRef.current = savedId;
-
-    const savedNick = sessionStorage.getItem('click_battle_nick') || localStorage.getItem('click_battle_nick');
-    if (savedNick) setNickname(savedNick);
-
-    const savedAvatar = sessionStorage.getItem('click_battle_avatar') || localStorage.getItem('click_battle_avatar');
-    if (savedAvatar) setAvatar(savedAvatar);
   }, []);
 
   // Cleanup timers on unmount
