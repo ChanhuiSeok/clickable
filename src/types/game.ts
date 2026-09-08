@@ -39,6 +39,10 @@ export interface PlayerJoinPayload {
   avatar: string;
 }
 
+export interface PlayerLeavePayload {
+  id: string;
+}
+
 export interface ScreenSyncPayload {
   state: GameState;
   remainingTime: number;

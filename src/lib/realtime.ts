@@ -1,14 +1,17 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
-import { GameControlPayload, ScoreBatchPayload, Participant, PlayerJoinPayload } from '@/types/game';
+import { GameControlPayload, ScoreBatchPayload, Participant, PlayerJoinPayload, PlayerLeavePayload } from '@/types/game';
 
 type GameControlCallback = (payload: GameControlPayload) => void;
 type ScoreBatchCallback = (payload: ScoreBatchPayload) => void;
 type PresenceCallback = (participants: Participant[]) => void;
 type PlayerJoinCallback = (payload: PlayerJoinPayload) => void;
+type PlayerLeaveCallback = (payload: PlayerLeavePayload) => void;
 
 const ROOM_NAME = 'click_battle_lobby';
 const LOCAL_CHANNEL_NAME = 'click_battle_local_channel';
+const INACTIVITY_TIMEOUT_MS = 2500; // 2.5초 이상 무응답 시 즉시 퇴장 처리 (3초 이내 반영)
+const HEARTBEAT_INTERVAL_MS = 1000; // 1초 주기로 하트비트 전송
 
 class BattleRealtimeClient {
   private channel: RealtimeChannel | null = null;
@@ -17,6 +20,7 @@ class BattleRealtimeClient {
   private scoreBatchListeners: Set<ScoreBatchCallback> = new Set();
   private presenceListeners: Set<PresenceCallback> = new Set();
   private playerJoinListeners: Set<PlayerJoinCallback> = new Set();
+  private playerLeaveListeners: Set<PlayerLeaveCallback> = new Set();
   private currentPresence: Map<string, Participant> = new Map();
   public isConnected: boolean = false;
   private role: 'screen' | 'student' = 'student';
@@ -77,6 +81,14 @@ class BattleRealtimeClient {
     this.notifyPresence();
   }
 
+  private handleLeavingPlayer(id: string) {
+    if (!id) return;
+    if (this.currentPresence.has(id)) {
+      this.currentPresence.delete(id);
+      this.notifyPresence();
+    }
+  }
+
   private setupSupabaseChannel(supabase: ReturnType<typeof getSupabaseClient>) {
     if (!supabase) return;
 
@@ -109,6 +121,13 @@ class BattleRealtimeClient {
         this.handleIncomingPlayer(joinData);
         this.playerJoinListeners.forEach((fn) => fn(joinData));
       })
+      .on('broadcast', { event: 'player_leave' }, ({ payload }) => {
+        const leaveData = payload as PlayerLeavePayload;
+        if (leaveData && leaveData.id) {
+          this.handleLeavingPlayer(leaveData.id);
+          this.playerLeaveListeners.forEach((fn) => fn(leaveData));
+        }
+      })
       .on('broadcast', { event: 'player_heartbeat' }, ({ payload }) => {
         this.handleIncomingPlayer(payload as Participant);
       })
@@ -130,6 +149,18 @@ class BattleRealtimeClient {
             }
           });
         });
+      })
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        let changed = false;
+        (leftPresences as unknown as Participant[]).forEach((p) => {
+          if (p && p.id && this.currentPresence.has(p.id)) {
+            this.currentPresence.delete(p.id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          this.notifyPresence();
+        }
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -177,6 +208,12 @@ class BattleRealtimeClient {
           const joinData = payload as PlayerJoinPayload;
           this.handleIncomingPlayer(joinData);
           this.playerJoinListeners.forEach((fn) => fn(joinData));
+        } else if (type === 'player_leave') {
+          const leaveData = payload as PlayerLeavePayload;
+          if (leaveData && leaveData.id) {
+            this.handleLeavingPlayer(leaveData.id);
+            this.playerLeaveListeners.forEach((fn) => fn(leaveData));
+          }
         } else if (type === 'player_heartbeat') {
           this.handleIncomingPlayer(payload as Participant);
         } else if (type === 'presence_request') {
@@ -224,11 +261,11 @@ class BattleRealtimeClient {
         }
       }
 
-      // Cleanup inactive players after 20 seconds
+      // Cleanup inactive players after INACTIVITY_TIMEOUT_MS (2.5초) -> 3초 이내 확실히 반영
       const now = Date.now();
       let changed = false;
       this.currentPresence.forEach((p, id) => {
-        if (now - (p.lastActive || 0) > 20000) {
+        if (now - (p.lastActive || 0) > INACTIVITY_TIMEOUT_MS) {
           this.currentPresence.delete(id);
           changed = true;
         }
@@ -236,7 +273,7 @@ class BattleRealtimeClient {
       if (changed) {
         this.notifyPresence();
       }
-    }, 3000);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   private notifyPresence() {
@@ -303,6 +340,27 @@ class BattleRealtimeClient {
     return () => this.playerJoinListeners.delete(callback);
   }
 
+  sendPlayerLeave(payload: PlayerLeavePayload) {
+    this.handleLeavingPlayer(payload.id);
+    if (this.channel && isSupabaseConfigured) {
+      this.channel.send({
+        type: 'broadcast',
+        event: 'player_leave',
+        payload,
+      });
+      try {
+        this.channel.untrack();
+      } catch {}
+    } else {
+      this.sendLocal('player_leave', payload);
+    }
+  }
+
+  onPlayerLeave(callback: PlayerLeaveCallback) {
+    this.playerLeaveListeners.add(callback);
+    return () => this.playerLeaveListeners.delete(callback);
+  }
+
   onPresence(callback: PresenceCallback) {
     this.presenceListeners.add(callback);
     callback(Array.from(this.currentPresence.values()));
@@ -311,6 +369,9 @@ class BattleRealtimeClient {
 
   disconnect() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.currentUser && this.role === 'student') {
+      this.sendPlayerLeave({ id: this.currentUser.id });
+    }
     if (this.channel) {
       this.channel.unsubscribe();
       this.channel = null;
@@ -323,6 +384,7 @@ class BattleRealtimeClient {
     this.scoreBatchListeners.clear();
     this.presenceListeners.clear();
     this.playerJoinListeners.clear();
+    this.playerLeaveListeners.clear();
     this.currentPresence.clear();
   }
 }

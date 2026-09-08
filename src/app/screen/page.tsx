@@ -135,6 +135,11 @@ export default function ScreenPage() {
       });
     });
 
+    // Subscribe to immediate player leave broadcasts
+    const unsubLeave = realtime.onPlayerLeave((player) => {
+      setParticipants((prev) => prev.filter((p) => p.id !== player.id));
+    });
+
     // Subscribe to score batches
     const unsubScore = realtime.onScoreBatch((batch: ScoreBatchPayload) => {
       // If final round is in progress, only accept score updates from qualified players
@@ -176,6 +181,7 @@ export default function ScreenPage() {
     return () => {
       unsubPresence();
       unsubJoin();
+      unsubLeave();
       unsubScore();
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);

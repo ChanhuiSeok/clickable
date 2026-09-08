@@ -296,7 +296,25 @@ export default function StudentPage() {
     setIsJoined(true);
   };
 
+  // Handle beforeunload and pagehide to immediately broadcast player leave
+  useEffect(() => {
+    if (!isJoined || !userId) return;
+
+    const handleLeave = () => {
+      realtime.sendPlayerLeave({ id: userId });
+    };
+
+    window.addEventListener('beforeunload', handleLeave);
+    window.addEventListener('pagehide', handleLeave);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleLeave);
+      window.removeEventListener('pagehide', handleLeave);
+    };
+  }, [isJoined, userId]);
+
   const handleEditProfile = () => {
+    realtime.sendPlayerLeave({ id: userId });
     sessionStorage.setItem('click_battle_joined', 'false');
     setIsJoined(false);
   };
