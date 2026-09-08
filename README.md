@@ -1,9 +1,7 @@
 # ⚡ 실시간 20초 클릭 배틀 (Click Battle)
 
 > 고등학생 40명을 대상으로 한 아케이드 감성의 실시간 20초 초고속 클릭 배틀 웹 애플리케이션입니다.  
-> Next.js (App Router), Tailwind CSS, Supabase Realtime(Broadcast)으로 구축되었으며 Vercel에 원클릭 배포할 수 있습니다.
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChanhuiSeok%2Fclickable&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
+> Next.js (App Router), Tailwind CSS, Supabase Realtime(Broadcast)으로 구축되었습니다.
 
 ---
 
